@@ -1,16 +1,20 @@
 #!/bin/bash
 
-dir=$(dirname $(readlink -f $0))
+dir=$(pwd -P)
 path=$(basename $dir)
 database=$1
-domain=$2
-version=$3
-databaseVersion=$4
+MYSQLUSER=$2
+MYSQLPASSWORD=$3
+domain=$4
+version=$5
+databaseVersion=$6
 
 function usage()
 {
-    echo "Usage: ./setup.sh database-name domain-name [magento-version] [database-variation]";
+    echo "Usage: ./setup.sh database-name database-username database-password domain-name [magento-version] [database-variation]";
     echo "  database-name       Name of the database which to use for installment";
+    echo "  database-username   Username which is assigned to database";
+    echo "  database-password   Password for database username";
     echo "  domain-name         Domain name of the test system";
     echo "  magento-version     Magento version to install, by default: latest";
     echo "  database-variation  Special variation of database to install: original, large";
@@ -40,12 +44,6 @@ then
     databaseVersion=""
 fi
 
-
-# Import database
-MYSQLPASSWORD=$(awk -F "=" '/password/ {print $2}' ${HOME}/.my.cnf | sed -e 's/^[ \t]*//')
-MYSQLUSER=$(awk -F "=" '/user/ {print $2}' ${HOME}/.my.cnf | sed -e 's/^[ \t]*//')
-MYSQLHOST=$(awk -F "=" '/host/ {print $2}' ${HOME}/.my.cnf | sed -e 's/^[ \t]*//')
-
 dbfile=$dir/db/data.sql.gz
 
 if [ -f $dir/db/data-$databaseVersion-$version.sql.gz ]
@@ -65,8 +63,9 @@ baseDbFile=$(basename $dbfile)
 mkdir $dir/magento
 cd $dir/magento
 
-wget -qO- https://magento.mirror.hypernode.com/releases/magento-$version.tar.gz | tar xfz -
-chmod +x bin/magento
+wget -c https://magento.mirror.hypernode.com/releases/magento-$version.tar.gz &&
+tar -xvf magento-$version.tar.gz &&
+chmod a+rwx bin/magento &&
 
 function cache_magento() {
    cache_path=$HOME/cache/$path-$version
@@ -83,20 +82,20 @@ function try_restore_from_cache() {
    then
       mysql -e "drop database if exists $database; create database $database;"
       gunzip < $cache_path/$baseDbFile | mysql $database
-      bin/magento setup:install --db-host="$MYSQLHOST" --db-name="$database" --db-user="$MYSQLUSER" \
+      php70 bin/magento setup:install --db-host="localhost" --db-name="$database" --db-user="$MYSQLUSER" \
        --db-password="$MYSQLPASSWORD" --admin-firstname=Admin --admin-lastname=User \
        --admin-user=admin --admin-password=Password123 --admin-email=test@example.com \
        --base-url="http://$domain/" --language=en_US --timezone=Europe/Amsterdam \
        --currency=USD --use-rewrites=1
-   
+
       if [[ $NO_REDIS == "" ]]
-      then   
+      then
          # Enable redis cache in Magento 2
          LOCAL_XML=$dir/magento/app/etc/env.php php $dir/config/configure-redis.php
       fi
 
-      bin/magento cache:flush
-      bin/magento cache:enable
+      php70 bin/magento cache:flush
+      php70 bin/magento cache:enable
    else
       setup_magento
       cache_magento
@@ -116,7 +115,7 @@ function setup_magento() {
        mysql $database < $fixFile
     fi
 
-    bin/magento setup:install --db-host="$MYSQLHOST" --db-name="$database" --db-user="$MYSQLUSER" \
+    php70 bin/magento setup:install --db-host="localhost" --db-name="$database" --db-user="$MYSQLUSER" \
       --db-password="$MYSQLPASSWORD" --admin-firstname=Admin --admin-lastname=User \
       --admin-user=admin --admin-password=Password123 --admin-email=test@example.com \
       --base-url="http://$domain/" --language=en_US --timezone=Europe/Amsterdam \
@@ -140,16 +139,16 @@ function setup_magento() {
    n98-magerun2 config:set dev/grid/async_indexing 1
    n98-magerun2 config:set sales_email/general/async_sending 1
 
-   bin/magento cache:flush
-   bin/magento indexer:reindex cataloginventory_stock
-   bin/magento indexer:reindex
-   bin/magento cache:enable
+   php70 bin/magento cache:flush
+   php70 bin/magento indexer:reindex cataloginventory_stock
+   php70 bin/magento indexer:reindex
+   php70 bin/magento cache:enable
 }
 
 try_restore_from_cache
 
-bin/magento deploy:mode:set production
-bin/magento cache:flush
+php70 bin/magento deploy:mode:set production
+php70 bin/magento cache:flush
 
 $dir/optimize-composer.sh
 
