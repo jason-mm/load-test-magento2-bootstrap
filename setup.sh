@@ -70,7 +70,7 @@ chmod a+rwx bin/magento &&
 function cache_magento() {
    cache_path=$HOME/cache/$path-$version
    mkdir -p $cache_path
-   mysqldump $database | gzip -c > $cache_path/$baseDbFile
+   mysqldump -u$MYSQLUSER -p$MYSQLPASSWORD $database | gzip -c > $cache_path/$baseDbFile
 }
 
 function try_restore_from_cache() {
@@ -80,9 +80,9 @@ function try_restore_from_cache() {
       setup_magento
    elif [ -f $cache_path/$baseDbFile ]
    then
-      mysql -e "drop database if exists $database; create database $database;"
-      gunzip < $cache_path/$baseDbFile | mysql $database
-      php70 bin/magento setup:install --db-host="localhost" --db-name="$database" --db-user="$MYSQLUSER" \
+      mysql -u$MYSQLUSER -p$MYSQLPASSWORD -e "drop database if exists $database; create database $database;"
+      gunzip < $cache_path/$baseDbFile | mysql -u$MYSQLUSER -p$MYSQLPASSWORD $database
+      php bin/magento setup:install --db-host="localhost" --db-name="$database" --db-user="$MYSQLUSER" \
        --db-password="$MYSQLPASSWORD" --admin-firstname=Admin --admin-lastname=User \
        --admin-user=admin --admin-password=Password123 --admin-email=test@example.com \
        --base-url="http://$domain/" --language=en_US --timezone=Europe/Amsterdam \
@@ -94,8 +94,8 @@ function try_restore_from_cache() {
          LOCAL_XML=$dir/magento/app/etc/env.php php $dir/config/configure-redis.php
       fi
 
-      php70 bin/magento cache:flush
-      php70 bin/magento cache:enable
+      php bin/magento cache:flush
+      php bin/magento cache:enable
    else
       setup_magento
       cache_magento
@@ -104,18 +104,18 @@ function try_restore_from_cache() {
 
 function setup_magento() {
     echo "Importing $dbfile"
-    mysql -e "drop database if exists $database; create database $database;"
-    gunzip < $dbfile | mysql $database
+    mysql -u$MYSQLUSER -p$MYSQLPASSWORD -e "drop database if exists $database; create database $database;"
+    gunzip < $dbfile | mysql -u$MYSQLUSER -p$MYSQLPASSWORD $database
 
     fixFile=$dir/db/data-fix-$version.sql
 
     if [ -f $fixFile ]
     then
        echo "Fixing setup_module table for $version, as structure didn't change but module setup version did"
-       mysql $database < $fixFile
+       mysql -u$MYSQLUSER -p$MYSQLPASSWORD $database < $fixFile
     fi
 
-    php70 bin/magento setup:install --db-host="localhost" --db-name="$database" --db-user="$MYSQLUSER" \
+    php bin/magento setup:install --db-host="localhost" --db-name="$database" --db-user="$MYSQLUSER" \
       --db-password="$MYSQLPASSWORD" --admin-firstname=Admin --admin-lastname=User \
       --admin-user=admin --admin-password=Password123 --admin-email=test@example.com \
       --base-url="http://$domain/" --language=en_US --timezone=Europe/Amsterdam \
@@ -127,28 +127,28 @@ function setup_magento() {
       LOCAL_XML=$dir/magento/app/etc/env.php php $dir/config/configure-redis.php
    fi
 
-   n98-magerun2 config:set web/unsecure/base_url http://$domain/
-   n98-magerun2 config:set web/secure/base_url http://$domain/
-   n98-magerun2 config:set catalog/frontend/flat_catalog_category 1
-   n98-magerun2 config:set catalog/frontend/flat_catalog_product 1
+   $dir/n98-magerun2 config:set web/unsecure/base_url http://$domain/
+   $dir/n98-magerun2 config:set web/secure/base_url http://$domain/
+   $dir/n98-magerun2 config:set catalog/frontend/flat_catalog_category 1
+   $dir/n98-magerun2 config:set catalog/frontend/flat_catalog_product 1
    # Make same category product per page positions as in Magento 1.0
-   n98-magerun2 config:set catalog/frontend/grid_per_page_values "12,24,36"
-   n98-magerun2 config:set catalog/frontend/grid_per_page "12"
-   n98-magerun2 config:set system/full_page_cache/caching_application 2
-   n98-magerun2 config:set system/full_page_cache/ttl 86400
-   n98-magerun2 config:set dev/grid/async_indexing 1
-   n98-magerun2 config:set sales_email/general/async_sending 1
+   $dir/n98-magerun2 config:set catalog/frontend/grid_per_page_values "12,24,36"
+   $dir/n98-magerun2 config:set catalog/frontend/grid_per_page "12"
+   $dir/n98-magerun2 config:set system/full_page_cache/caching_application 2
+   $dir/n98-magerun2 config:set system/full_page_cache/ttl 86400
+   $dir/n98-magerun2 config:set dev/grid/async_indexing 1
+   $dir/n98-magerun2 config:set sales_email/general/async_sending 1
 
-   php70 bin/magento cache:flush
-   php70 bin/magento indexer:reindex cataloginventory_stock
-   php70 bin/magento indexer:reindex
-   php70 bin/magento cache:enable
+   php bin/magento cache:flush
+   php bin/magento indexer:reindex cataloginventory_stock
+   php bin/magento indexer:reindex
+   php bin/magento cache:enable
 }
 
 try_restore_from_cache
 
-php70 bin/magento deploy:mode:set production
-php70 bin/magento cache:flush
+php bin/magento deploy:mode:set production
+php bin/magento cache:flush
 
 $dir/optimize-composer.sh
 
